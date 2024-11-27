@@ -89,25 +89,73 @@ for c,df_this in df.groupby(['task']):
         fig.savefig(fig_path)
         plt.close('all')
 
+def get_word_counts(words,identities,df):
 
-# prototype, count for each word how many times it is assigned to each identity
-PATH_CFG='data/task-genderBias_language-english_model-lmstudio~community!Phi~3.1~mini~4k~instruct~GGUF_cfg.json'
+    word_counts={}
+    for w in words:
+        word_counts[w]=[]
+        for _,instance in df.iterrows():
+            #print(instance['answer'])
+            assignment = get_closes_identity(instance['answer'],words,identities)[w]
+            #print(w,assignment)
+            word_counts[w].append(assignment)
+        ws,cns=np.unique(word_counts[w],return_counts=True)
+        word_counts[w]= {k:v for k,v in zip(ws,cns)}
+    
+    return word_counts
+sanitize_model2 = lambda x: x.replace('/','!').replace('-','~').replace('_','&')
+retrieve_model2 = lambda x: x.replace('!','/').replace('~','-').replace('&','_')
 
-cfg=load_json(PATH_CFG)
-words=cfg['words']
-identities=cfg['identities']
-answer=df.iloc[0]['answer']
+import glob
+score_cols = [x for x in df.columns if 'bias' in x]
+counts_dict = {}
+grouping_by=['task','language','model']
+index=0
+full_cfg=cfg=read_yaml('cfg.yml')
+for c,df_this in df.groupby(grouping_by):
+    index+=1
+    print(df_this)
+    task = c[0]
+    language = c[1]
+    model = c[2]
+    df_this['model2'] = df_this['model'].apply(sanitize_model2)
+    df_this['path']=df_this.apply(lambda x: f'data/task-{x["task"]}_language-{x["language"]}_model-*{x["model2"]}*_cfg.json',axis=1)
+    df_this['cfg_path'] = df_this.apply(lambda x: glob.glob(x['path'])[0] if len(glob.glob(x['path']))==1 else None,axis=1)
+    print(any(df_this['cfg_path'].isna().tolist()))
+    assert df_this['cfg_path'].unique().shape[0] == 1
 
-get_closes_identity(answer,words,identities)
 
-df_english=df[df['language']=='english']
-word_counts={}
-for w in words:
-    word_counts[w]=[]
-    for _,instance in df_english.iterrows():
-        #print(instance['answer'])
-        assignment = get_closes_identity(instance['answer'],words,identities)[w]
-        #print(w,assignment)
-        word_counts[w].append(assignment)
-    word_counts[w]=np.unique(word_counts[w],return_counts=True)
+    cfg=load_json(df_this['cfg_path'].unique()[0])
+    words=cfg['words']
+    identities=cfg['identities']
+    counts = get_word_counts(words,identities,df_this)
+    
+    # invert identities dict
+    val2idx = {v: k for k, v in sorted(cfg['identities'].items(), key=lambda item: item[0])}
+    #sort val2idx
 
+    # ratio count positive valence/(sum count valences)
+    val2idx = list(val2idx.items())
+    num = val2idx[-1][-1] # name of julia in general
+    den = val2idx[0][-1] # name of ben in general
+
+    counts
+    word_dict={}
+    word_dict.update({k:v for k,v in zip(grouping_by,c)})
+
+    # find correspondence between english and the other language
+    lang2lang = {}
+    ref_lange = full_cfg['tasks'][c[0]]['languages'].index('english')
+    for w,dataw in full_cfg['tasks'][c[0]]['words'].items():
+        this_lang_index=full_cfg['tasks'][c[0]]['languages'].index(language)
+        lang2lang[dataw[this_lang_index+1]]=dataw[ref_lange+1]
+    for w,c_dict in counts.items():
+        word_dict[lang2lang[w]]=c_dict.get(num,0)/(c_dict.get(num,0)+c_dict.get(den,0))
+    
+    counts_dict[index]=word_dict
+
+
+
+
+df_words=pd.DataFrame.from_dict(counts_dict,orient='index')
+df_words.to_csv('data/df_words.csv',index=False)
