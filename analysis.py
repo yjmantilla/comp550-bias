@@ -159,3 +159,4 @@ for c,df_this in df.groupby(grouping_by):
 
 df_words=pd.DataFrame.from_dict(counts_dict,orient='index')
 df_words.to_csv('data/df_words.csv',index=False)
+
