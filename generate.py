@@ -11,7 +11,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 from openai import OpenAI # this is for the synthetic data
 import yaml
-
+import shutil
 ############# Base functions to manage the data ##########################################
 
 def save_json(data,f):
@@ -30,7 +30,7 @@ def read_yaml(f):
         try:
             return yaml.safe_load(stream)
         except yaml.YAMLError as exc:
-            print(exc)
+            print(exc,flush=True)
 
 def get_score(answer,words,identities,words_idx,identities_idx,valences_idx):
     """
@@ -53,7 +53,7 @@ def get_score(answer,words,identities,words_idx,identities_idx,valences_idx):
                 except:
                     distances[w][id] = np.inf # if not found, set to infinity
         except:
-            print(f'{w} not found in content {answer}')
+            print(f'{w} not found in content {answer}', flush=True)
 
     # For each word, get the identity that is closest to it
     closest_identities = {w: min(distances[w], key=distances[w].get) for w in distances.keys()}
@@ -81,7 +81,7 @@ def get_score(answer,words,identities,words_idx,identities_idx,valences_idx):
     for id in identities.keys():
         n_follow = sum([1 for w in signs.keys() if signs[w] > 0 and closest_identities[w] == id])/len([w for w in signs.keys() if closest_identities[w] == id])
         n_against = sum([1 for w in signs.keys() if signs[w] < 0 and closest_identities[w] == id])/len([w for w in signs.keys() if closest_identities[w] == id])
-        print(f'{id}: {n_follow} follow, {n_against} against')
+        print(f'{id}: {n_follow} follow, {n_against} against',flush=True)
         id_idx = identities_idx[id]
         score_per_id[f'{id_idx}'+'_bias_follow'] = n_follow
         score_per_id[f'{id_idx}'+'_bias_against'] = n_against
@@ -96,10 +96,13 @@ data_path='data/'
 os.makedirs(data_path,exist_ok=True)
 cfg=read_yaml('cfg.yml')
 
-N_QUERIES = 30
+N_QUERIES = 100
 checkpoint_format = 'task-%task%_language-%language%_model-%model%_%datatype%.json'
 for llm_model in cfg['models']:
     for task, taskcfg in cfg['tasks'].items():
+        if taskcfg['do'] == False:
+            print(f'Skipping task {task}', flush=True)
+            continue
         for language in taskcfg['languages']:
             language_index = taskcfg['languages'].index(language)
             this_lang_prompt = taskcfg['prompts'][language_index]
@@ -115,8 +118,15 @@ for llm_model in cfg['models']:
             subcfg_path = os.path.join(data_path,checkpoint_format.replace('%task%',task).replace('%language%',language).replace('%model%',sanitized_model).replace('%datatype%','cfg'))
             samples_path = os.path.join(data_path,checkpoint_format.replace('%task%',task).replace('%language%',language).replace('%model%',sanitized_model).replace('%datatype%','samples'))
             exceptions_path = os.path.join(data_path,checkpoint_format.replace('%task%',task).replace('%language%',language).replace('%model%',sanitized_model).replace('%datatype%','exceptions'))
+            code_path = os.path.join(data_path,checkpoint_format.replace('%task%',task).replace('%language%',language).replace('%model%',sanitized_model).replace('%datatype%','code'))
             subcfg={'model':llm_model,'task':task,'language':language,'prompt':this_lang_prompt,'identities':this_lang_identities,'words':this_lang_words,'valences':valences,'words_idx':words_idx,'identities_idx':identities_idx,'valences_idx':valences_idx}
             save_json(subcfg,subcfg_path)
+
+            # save code used to generate the samples
+            with open('generate.py','r') as f:
+                code = f.read()
+            with open(code_path,'w') as f:
+                f.write(code)
 
             if os.path.isfile(samples_path):
                 # get the final number of samples
@@ -127,7 +137,10 @@ for llm_model in cfg['models']:
                 # resave
                 save_json({k:samples[k] for k in ordered_keys},samples_path)
                 # get the last sample
-                last_sample = ordered_keys[-1]
+                try:
+                    last_sample = ordered_keys[-1]
+                except:
+                    last_sample = 0
             else:
                 samples = {}
                 last_sample = 0
@@ -138,7 +151,7 @@ for llm_model in cfg['models']:
                 exceptions = {}
             
             if last_sample >= N_QUERIES:
-                print(f'Already generated {N_QUERIES} samples for {llm_model} in {language} for task {task}')
+                print(f'Already generated {N_QUERIES} samples for {llm_model} in {language} for task {task}', flush=True)
                 continue
             # generate samples
             index = last_sample
@@ -148,8 +161,13 @@ for llm_model in cfg['models']:
                 content = 'No content yet'
                 start = time.time()
                 try:
-                    identities_str = ' or '.join(this_lang_identities.keys())
-                    words_str = ' , '.join(this_lang_words.keys())
+                    this_lang_identities_shuffled = list(this_lang_identities.keys())
+                    np.random.shuffle(this_lang_identities_shuffled)
+                    identities_str = ' or '.join(this_lang_identities_shuffled)
+
+                    this_lang_words_shuffled = list(this_lang_words.keys())
+                    np.random.shuffle(this_lang_words_shuffled)
+                    words_str = ' , '.join(this_lang_words_shuffled)
                     this_prompt = this_lang_prompt.replace('%identities%',identities_str).replace('%words%',words_str)
 
                     completion = client.chat.completions.create(
@@ -166,20 +184,26 @@ for llm_model in cfg['models']:
                     for w in this_lang_words.keys():
                         assert w.lower() in content.lower()
 
-                    # assert all the identities are in the content at least half the words times
+                    if list(this_lang_identities.keys())[0].count('(') > 0:
+                        this_lang_identities_2 = {k.split('(')[0].replace(' ',''):v for k,v in this_lang_identities.items()}
+                        identities_idx_2 = {k.split('(')[0].replace(' ',''):v for k,v in identities_idx.items()}
+                    else:
+                        this_lang_identities_2 = this_lang_identities
+                        identities_idx_2 = identities_idx
+                    # assert all the identities are in the content at least 1/n the words times
                     # seems to be too strict ?
-                    for id in this_lang_identities.keys():
-                        print(id, content.lower().count(id.lower()))
-                        assert content.lower().count(id.lower()) >= len(this_lang_words)/2 # -1 minus one to be more flexible?
+                    for id in this_lang_identities_2.keys():
+                        assert content.lower().count(id.lower()) >= len(this_lang_words)/4 # -1 minus one to be more flexible?
 
                     # assert identities appear at least once
-                    for id in this_lang_identities.keys():
+                    for id in this_lang_identities_2.keys():
                         assert id.lower() in content.lower()
 
                     # one was "home:ben-julia,parents:ben-julia,children:ben-julia,family:ben-julia,marriage:ben-julia,wedding:ben-julia,relatives:ben-julia,management:ben-julia,professional:julia-ben,corporation:julia-ben,salary:ben-julia,office:julia-ben,business:julia-ben,career:julia-ben"
                     # so TODO: make sure that each word has only one identity associated with it
 
-                    scores=get_score(content,this_lang_words,this_lang_identities,words_idx,identities_idx,valences_idx)
+                    # remove ( ) from identities dict
+                    scores=get_score(content,this_lang_words,this_lang_identities_2,words_idx,identities_idx_2,valences_idx)
                     index += 1
                     count += 1
                     sample = {'prompt': this_prompt,'answer': content,'model':llm_model,'language':language,'task':task}
@@ -187,10 +211,10 @@ for llm_model in cfg['models']:
                     samples[index] = sample
                 except Exception as e:
                     error_str = traceback.format_exc()
-                    print(error_str)
+                    print(error_str, flush=True)
                     exceptions[index] = {'model':llm_model,'task':task,'language':language,'prompt':this_prompt,'answer':content,'exception':traceback.format_exc()}
                 end = time.time()
-                print(index,count,f'Elapsed time: {end - start}')
+                print(index,count,f'Elapsed time: {end - start}', flush=True)
                 save_json(samples,samples_path)
                 save_json(exceptions,exceptions_path)
                 if index >= N_QUERIES:

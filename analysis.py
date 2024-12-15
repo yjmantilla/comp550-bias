@@ -121,17 +121,26 @@ for c,df_this in df.groupby(grouping_by):
     df_this['model2'] = df_this['model'].apply(sanitize_model2)
     df_this['path']=df_this.apply(lambda x: f'data/task-{x["task"]}_language-{x["language"]}_model-*{x["model2"]}*_cfg.json',axis=1)
     df_this['cfg_path'] = df_this.apply(lambda x: glob.glob(x['path'])[0] if len(glob.glob(x['path']))==1 else None,axis=1)
-    print(any(df_this['cfg_path'].isna().tolist()))
+    print('anyna',any(df_this['cfg_path'].isna().tolist()))
     assert df_this['cfg_path'].unique().shape[0] == 1
 
 
     cfg=load_json(df_this['cfg_path'].unique()[0])
     words=cfg['words']
     identities=cfg['identities']
-    counts = get_word_counts(words,identities,df_this)
+    description=full_cfg['tasks'][c[0]]['task_label']
+
+    if list(identities.keys())[0].count('(') > 0:
+        identities_2 = {k.split('(')[0].replace(' ',''):v for k,v in identities.items()}
+    else:
+        identities_2 = identities
+        
+
+
+    counts = get_word_counts(words,identities_2,df_this)
     
     # invert identities dict
-    val2idx = {v: k for k, v in sorted(cfg['identities'].items(), key=lambda item: item[0])}
+    val2idx = {v: k for k, v in sorted(identities_2.items(), key=lambda item: item[0])}
     #sort val2idx
 
     # ratio count positive valence/(sum count valences)
@@ -139,8 +148,10 @@ for c,df_this in df.groupby(grouping_by):
     num = val2idx[-1][-1] # name of julia in general
     den = val2idx[0][-1] # name of ben in general
 
-    counts
+
     word_dict={}
+    word_dict['description']=description
+    word_dict['formula']=f'{num}/({num}+{den})'
     word_dict.update({k:v for k,v in zip(grouping_by,c)})
 
     # find correspondence between english and the other language
@@ -158,5 +169,6 @@ for c,df_this in df.groupby(grouping_by):
 
 
 df_words=pd.DataFrame.from_dict(counts_dict,orient='index')
+df_words.sort_values(by=['model','language','task'],inplace=True)
 df_words.to_csv('data/df_words.csv',index=False)
 
