@@ -186,5 +186,5 @@ for llm_model in cfg['models']:
                 save_json(exceptions,exceptions_path)
                 if index >= N_QUERIES:
                     break
-                time.sleep(37) # to avoid burning the gpu
+            time.sleep(37) # to avoid burning the gpu
         time.sleep(137) # to avoid burning the gpu
