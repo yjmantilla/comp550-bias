@@ -48,14 +48,18 @@ data_path='data/'
 os.makedirs(data_path,exist_ok=True)
 cfg=read_yaml('cfg.yml')
 from copy import deepcopy
+import time
 N_QUERIES = 100
-checkpoint_format = 'task-%task%_language-%language%_model-%model%_%datatype%.json'
+checkpoint_format = 'task-%task%_domain-bias-%bias%_%domain%_baseline-%baseline%_language-%language%_model-%model%_%datatype%.json'
 for llm_model in cfg['models']:
     for task, taskcfg in cfg['tasks'].items():
         if taskcfg['do'] == False:
             print(f'Skipping task {task}', flush=True)
             continue
         for language in taskcfg['languages']:
+            baseline = taskcfg['baseline']
+            domain = taskcfg['domain']
+            bias = taskcfg['bias']
             this_lang_prompt = taskcfg['prompts'][language]
             identities = deepcopy(taskcfg['identities'])
             words = deepcopy(taskcfg['words'])
@@ -70,11 +74,11 @@ for llm_model in cfg['models']:
                 for lj in list(this_lang_words[i].keys()):
                     if lj not in [language,'group']:
                         del this_lang_words[i][lj]
-            subcfg_path = os.path.join(data_path,checkpoint_format.replace('%task%',task).replace('%language%',language).replace('%model%',sanitized_model).replace('%datatype%','cfg'))
-            samples_path = os.path.join(data_path,checkpoint_format.replace('%task%',task).replace('%language%',language).replace('%model%',sanitized_model).replace('%datatype%','samples'))
-            exceptions_path = os.path.join(data_path,checkpoint_format.replace('%task%',task).replace('%language%',language).replace('%model%',sanitized_model).replace('%datatype%','exceptions'))
-            code_path = os.path.join(data_path,checkpoint_format.replace('%task%',task).replace('%language%',language).replace('%model%',sanitized_model).replace('%datatype%','code'))
-            subcfg={'model':llm_model,'task':task,'language':language,'prompt':this_lang_prompt,'identities':this_lang_identities,'words':this_lang_words,}
+            subcfg_path = os.path.join(data_path,checkpoint_format.replace('%task%',task).replace('%bias%',bias).replace('%baseline%',baseline).replace('%domain%',domain).replace('%language%',language).replace('%model%',sanitized_model).replace('%datatype%','cfg'))
+            samples_path = os.path.join(data_path,checkpoint_format.replace('%task%',task).replace('%bias%',bias).replace('%baseline%',baseline).replace('%domain%',domain).replace('%language%',language).replace('%model%',sanitized_model).replace('%datatype%','samples'))
+            exceptions_path = os.path.join(data_path,checkpoint_format.replace('%task%',task).replace('%bias%',bias).replace('%baseline%',baseline).replace('%domain%',domain).replace('%language%',language).replace('%model%',sanitized_model).replace('%datatype%','exceptions'))
+            code_path = os.path.join(data_path,checkpoint_format.replace('%task%',task).replace('%bias%',bias).replace('%baseline%',baseline).replace('%domain%',domain).replace('%language%',language).replace('%model%',sanitized_model).replace('%datatype%','code'))
+            subcfg={'model':llm_model,'task':task,'bias':bias,'domain':domain,'baseline':baseline, 'language':language,'prompt':this_lang_prompt,'identities':this_lang_identities,'words':this_lang_words,}
             save_json(subcfg,subcfg_path)
 
             # save code used to generate the samples
@@ -170,15 +174,17 @@ for llm_model in cfg['models']:
                     # remove ( ) from identities dict
                     index += 1
                     count += 1
-                    sample = {'prompt': this_prompt,'answer': content,'model':llm_model,'language':language,'task':task, 'words':this_lang_words_shuffled,'identities':this_lang_identities_shuffled,}
+                    sample = {'prompt': this_prompt,'answer': content,'model':llm_model,'language':language,'task':task,'bias':bias,'domain':domain,'baseline':baseline,'words':this_lang_words_shuffled,'identities':this_lang_identities_shuffled,}
                     samples[index] = sample
                 except Exception as e:
                     error_str = traceback.format_exc()
                     print(error_str, flush=True)
-                    exceptions[index] = {'model':llm_model,'task':task,'language':language,'prompt':this_prompt,'words':this_lang_words_shuffled,'identities':this_lang_identities_shuffled,'answer':content,'exception':traceback.format_exc()}
+                    exceptions[index] = {'model':llm_model,'task':task,'bias':bias,'domain':domain,'baseline':baseline,'language':language,'prompt':this_prompt,'words':this_lang_words_shuffled,'identities':this_lang_identities_shuffled,'answer':content,'exception':traceback.format_exc()}
                 end = time.time()
                 print(index,count,f'Elapsed time: {end - start}', flush=True)
                 save_json(samples,samples_path)
                 save_json(exceptions,exceptions_path)
                 if index >= N_QUERIES:
                     break
+                time.sleep(37) # to avoid burning the gpu
+        time.sleep(137) # to avoid burning the gpu
