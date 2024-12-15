@@ -70,44 +70,22 @@ def get_closes_identity(answer,words,identities):
     return closest_identities
 
 
-score_cols = [x for x in df.columns if 'bias' in x]
-for c,df_this in df.groupby(['task']):
-    print(c)
-    print(df_this)
-
-    # make a boxplot for each score column
-    for score_col in score_cols:
-        df_this.boxplot(column=score_col,by=['model','language'])
-        plt.title(score_col)
-        fig=plt.gcf()
-        # vertical x-axis labels
-        plt.xticks(rotation=30)
-        fname=f'task-{c[0]}_{score_col}.png'
-        fig_path = os.path.join(data_path,fname)
-        fig.suptitle(fname)
-        plt.tight_layout()
-        fig.savefig(fig_path)
-        plt.close('all')
-
-def get_word_counts(words,identities,df):
-
-    word_counts={}
-    for w in words:
-        word_counts[w]=[]
-        for _,instance in df.iterrows():
-            #print(instance['answer'])
-            assignment = get_closes_identity(instance['answer'],words,identities)[w]
-            #print(w,assignment)
-            word_counts[w].append(assignment)
-        ws,cns=np.unique(word_counts[w],return_counts=True)
-        word_counts[w]= {k:v for k,v in zip(ws,cns)}
-    
-    return word_counts
+def get_word_counts(df):
+    word_counts = []
+    wset = []
+    for _,instance in df.iterrows():
+        #print(instance['answer'])
+        assignment = get_closes_identity(instance['answer'],instance['words'],instance['identities'])
+        #print(w,assignment)
+        word_counts.append(assignment)
+        wset+=list(assignment.keys())
+        wset = list(set(wset))
+    per_word_counts = {w: {x: y for x, y in zip(*np.unique([wc.get(w, None) for wc in word_counts], return_counts=True))} for w in wset}
+    return per_word_counts
 sanitize_model2 = lambda x: x.replace('/','!').replace('-','~').replace('_','&')
 retrieve_model2 = lambda x: x.replace('!','/').replace('~','-').replace('&','_')
 
 import glob
-score_cols = [x for x in df.columns if 'bias' in x]
 counts_dict = {}
 grouping_by=['task','language','model']
 index=0
@@ -130,17 +108,12 @@ for c,df_this in df.groupby(grouping_by):
     identities=cfg['identities']
     description=full_cfg['tasks'][c[0]]['task_label']
 
-    if list(identities.keys())[0].count('(') > 0:
-        identities_2 = {k.split('(')[0].replace(' ',''):v for k,v in identities.items()}
-    else:
-        identities_2 = identities
-        
+    identities_2 = identities
 
-
-    counts = get_word_counts(words,identities_2,df_this)
+    counts = get_word_counts(df_this)
     
     # invert identities dict
-    val2idx = {v: k for k, v in sorted(identities_2.items(), key=lambda item: item[0])}
+    val2idx = {v: k for k, v in sorted(identities_2.items(), key=lambda item: item[1]['valence'])}
     #sort val2idx
 
     # ratio count positive valence/(sum count valences)
