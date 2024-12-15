@@ -13,6 +13,7 @@ from openai import OpenAI # this is for the synthetic data
 import yaml
 import glob
 import matplotlib.pyplot as plt
+from utils import get_closest_identity
 def load_json(f):
     with open(f,'r') as f:
         return json.load(f)
@@ -41,33 +42,6 @@ def sanitize_model_name(x):
 df['model'] = df['model'].apply(sanitize_model_name)
 
 
-def get_closes_identity(answer,words,identities):
-    """
-    Get the score of the answer based on the words and identities
-    words: dictionary with words as keys and valences as values
-    identities: dictionary with identities as keys and valences as values
-    answer: string with the answer
-    words_idx: dictionary with words as keys and indexes as values
-    identities_idx: dictionary with identities as keys and indexes as values
-    valences_idx: dictionary with valences as keys and indexes as values
-    """
-    answer = answer.lower()
-    distances={}
-    for w in [x.lower() for x in words]:
-        try:
-            distances[w] ={}
-            for id in [ y.lower() for y in identities]:
-                try:
-                    distances[w][id] = answer[answer.index(w):].index(id)
-                except:
-                    distances[w][id] = np.inf # if not found, set to infinity
-        except:
-            print(f'{w} not found in content {answer}')
-
-    # For each word, get the identity that is closest to it
-    closest_identities = {w: min(distances[w], key=distances[w].get) for w in distances.keys()}
-
-    return closest_identities
 
 
 def get_word_counts(df):
@@ -75,7 +49,7 @@ def get_word_counts(df):
     wset = []
     for _,instance in df.iterrows():
         #print(instance['answer'])
-        assignment = get_closes_identity(instance['answer'],instance['words'],instance['identities'])
+        assignment = get_closest_identity(instance['answer'],instance['words'],instance['identities'])
         #print(w,assignment)
         word_counts.append(assignment)
         wset+=list(assignment.keys())

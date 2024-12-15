@@ -13,6 +13,7 @@ from openai import OpenAI # this is for the synthetic data
 import yaml
 import shutil
 import unicodedata
+from utils import get_closest_identity
 
 def remove_accents(input_str):
     # Normalize the string to decompose accents
@@ -150,12 +151,18 @@ for llm_model in cfg['models']:
 
                     # assert all the identities are in the content at least 1/n the words times
                     # seems to be too strict ?
-                    for id in this_lang_identities_shuffled:
-                        assert content.lower().count(id.lower()) >= len(this_lang_words)/4 # -1 minus one to be more flexible?
+                    # commented because maybe be skewing the results
+                    # for id in this_lang_identities_shuffled:
+                    #     assert content.lower().count(id.lower()) >= len(this_lang_words)/4 # -1 minus one to be more flexible?
 
-                    # assert identities appear at least once
-                    for id in this_lang_identities_shuffled:
-                        assert id.lower() in content.lower()
+                    # sum of identities in content should be equal to the number of words
+                    sum_identities = sum([content.lower().count(id.lower()) for id in this_lang_identities_shuffled])
+                    assert sum_identities == len(this_lang_words_shuffled)
+
+                    # check closest identity is computable
+
+                    assignment = get_closest_identity(content,this_lang_words_shuffled,this_lang_identities_shuffled)
+
 
                     # one was "home:ben-julia,parents:ben-julia,children:ben-julia,family:ben-julia,marriage:ben-julia,wedding:ben-julia,relatives:ben-julia,management:ben-julia,professional:julia-ben,corporation:julia-ben,salary:ben-julia,office:julia-ben,business:julia-ben,career:julia-ben"
                     # so TODO: make sure that each word has only one identity associated with it
