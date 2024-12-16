@@ -113,23 +113,31 @@ def get_assignment(row, general_cfg):
     return multi_lingual_assignment_grouped
 
 df['assignment']=df.apply(get_assignment,axis=1,args=(FULL_CFG,))
-
+df['description']=df['task'].apply(lambda x: FULL_CFG['tasks'][x]['task_label'])
 # note in sexual orientation i forgot to assign the words with s and g, will have to correct that hardcoding
 
 def correct_assignment(row):
     correct_map = {'f':'s','m':'g'}
     new_assignment = {}
+    enter = False
     for w,a in row['assignment'].items():
-        if a in ['s','g']:
+        if a in ['s','g'] and w[0] in ['f','m']:
+            if not enter:
+                print('correcting')
+                print(row['assignment'])
+            enter = True
             new_w = w.split(' ')
             new_w[0] = correct_map[new_w[0]]
             new_assignment[' '.join(new_w)]=a
         else:
             new_assignment[w]=a
+    if enter:
+        print(new_assignment)
     return new_assignment
 
-df['assignment']=df.apply(correct_assignment,axis=1)
+df['assignment']=df.apply(correct_assignment,axis=1) # seems that no longer needed as the cfg has been corrected
 
+## Scores per answer
 def score(row):
     points = []
     for w,a in row['assignment'].items():
@@ -137,81 +145,154 @@ def score(row):
             points.append(1)
         else:
             points.append(-1)
-    
+    length = len(points)
+    return (points, sum(points),length)
 
-df.iloc[243]
-def get_word_counts(df):
-    word_counts = []
-    wset = []
-    for _,instance in df.iterrows():
-        #print(instance['answer'])
-        assignment = get_closest_identity(instance['answer'],instance['words'],instance['identities'])
-        #print(w,assignment)
-        word_counts.append(assignment)
-        wset+=list(assignment.keys())
-        wset = list(set(wset))
-    per_word_counts = {w: {x: y for x, y in zip(*np.unique([wc.get(w, None) for wc in word_counts], return_counts=True))} for w in wset}
-    return per_word_counts
-sanitize_model2 = lambda x: x.replace('/','!').replace('-','~').replace('_','&')
-retrieve_model2 = lambda x: x.replace('!','/').replace('~','-').replace('&','_')
+df['score']=df.apply(score,axis=1)
+df['score_points'] = df['score'].apply(lambda x: x[1])
+df['score_length'] = df['score'].apply(lambda x: x[2])
+df['score_normalized'] = df['score'].apply(lambda x: x[1]/x[2])
 
-import glob
-counts_dict = {}
-grouping_by=['task','language','model']
-index=0
-full_cfg=cfg=read_yaml('cfg.yml')
-for c,df_this in df.groupby(grouping_by):
-    index+=1
-    print(df_this)
-    task = c[0]
-    language = c[1]
-    model = c[2]
-    df_this['model2'] = df_this['model'].apply(sanitize_model2)
-    df_this['path']=df_this.apply(lambda x: f'data/task-{x["task"]}_language-{x["language"]}_model-*{x["model2"]}*_cfg.json',axis=1)
-    df_this['cfg_path'] = df_this.apply(lambda x: glob.glob(x['path'])[0] if len(glob.glob(x['path']))==1 else None,axis=1)
-    print('anyna',any(df_this['cfg_path'].isna().tolist()))
-    assert df_this['cfg_path'].unique().shape[0] == 1
+## Scores per task,language,model
+order_dims = ['task','language','model']
+df_per_tasklangmodel = list(df.groupby(order_dims))
+scores_per_tasklangmodel = []
+for i, df_task in df_per_tasklangmodel:
+    this_data ={}
+    print(i)
+    print(df_task.shape)
+    example_row = df_task.iloc[0]
+
+    w_counts = {w:[] for w in example_row['assignment'].keys()}
+    for w,a in example_row['assignment'].items():
+        for r,row in df_task.iterrows():
+            w_counts[w]+=[row['assignment'][w]]
+
+    w_counts = {w: {x: y for x, y in zip(*np.unique(w_counts[w], return_counts=True))} for w in w_counts.keys()}
+    w_points = {w: [-1*v*(k!=w[0])+1*v*(k==w[0]) for k,v in c.items()] for w,c in w_counts.items()}
+    w_sum_points = {w: sum(v) for w,v in w_points.items()}
+    w_sum_points_normalized = {w: sum(v)/sum([abs(x) for x in v]) for w,v in w_points.items()}
+    w_follow = {w: c.get(w[0],0) for w,c in w_counts.items()}
+    w_unfollow = {w: sum([-1*v*(k!=w[0])+0*v*(k==w[0]) for k,v in c.items()]) for w,c in w_counts.items()}
+    w_follow_ratio = {w: c.get(w[0],0)/sum(c.values()) for w,c in w_counts.items()}
+
+    for order_dim in order_dims:
+        this_data[order_dim] = example_row[order_dim]
+    this_data['bias'] = example_row['bias']
+    this_data['domain'] = example_row['domain']
+    this_data['baseline'] = example_row['baseline']
+    this_data['description'] = example_row['description']
+    this_data['n_samples'] = df_task.shape[0]
+    this_data['n_words'] = len(w_counts)
+    this_data['w_counts'] = w_counts
+    this_data['w_points'] = w_points
+    this_data['w_sum_points'] = w_sum_points
+    this_data['w_sum_points_normalized'] = w_sum_points_normalized
+    this_data['w_points_macro']=[sum(v) for k,v in w_points.items()]
+    this_data['w_sum_points_macro'] = sum(this_data['w_points_macro'])
+    this_data['w_sum_points_normalized_macro'] = sum([sum(v) for k,v in w_points.items()])/sum([sum([abs(x) for x in v]) for k,v in w_points.items()])
+    this_data['w_follow'] = w_follow
+    this_data['w_unfollow'] = w_unfollow
+    this_data['w_follow_ratio'] = w_follow_ratio
+    this_data['w_follow_macro'] = sum(w_follow.values())
+    this_data['w_unfollow_macro'] = sum(w_unfollow.values())
+    this_data['w_follow_ratio_macro'] = sum(w_follow.values())/sum([sum(c.values()) for c in w_counts.values()]) -0.5 # offset for it to be around 0 for unbiased
+    scores_per_tasklangmodel.append(this_data)
+
+df_scores = pd.DataFrame(scores_per_tasklangmodel)
+
+order_dims = ['bias','domain']
+df_scores_per_biasdomain = list(df_scores.groupby(order_dims))
+
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+for i, df_task in df_scores_per_biasdomain:
+    print(i)
+    bias=df_task.iloc[0]['bias']
+    domain=df_task.iloc[0]['domain']
+    description=df_task.iloc[0]['description']
+    print(df_task.shape)
+    print(df_task.iloc[0])
+
+    # Sort data for hierarchical structure
+    baseline_mapping ={}
+    first=True
+    for k in df_task['baseline'].copy().unique().tolist():
+        
+        if k=='0nope':
+            baseline_mapping[k]='0'
+        else:
+            if first:
+                baseline_mapping[k]='-1'
+                first=False
+            else:
+                baseline_mapping[k]='1'
 
 
-    cfg=load_json(df_this['cfg_path'].unique()[0])
-    words=cfg['words']
-    identities=cfg['identities']
-    description=full_cfg['tasks'][c[0]]['task_label']
+    # Sort and order the data
+    df_task['baseline_order'] = df_task['baseline'].apply(lambda x: baseline_mapping[x])
+    df_task = df_task.sort_values(['model', 'language', 'baseline_order']).reset_index(drop=True)
 
-    identities_2 = identities
+    # Create artificial empty rows for spacing
+    rows = []
+    previous_model = None
+    previous_language = None
 
-    counts = get_word_counts(df_this)
-    
-    # invert identities dict
-    val2idx = {v: k for k, v in sorted(identities_2.items(), key=lambda item: item[1]['valence'])}
-    #sort val2idx
+    for _, row in df_task.iterrows():
+        # Add 2 empty rows when the model changes
+        if previous_model is not None and row['model'] != previous_model:
+            rows.append({**row, 'w_follow_ratio_macro': None, 'x_label': '', 'baseline': None})
+            rows.append({**row, 'w_follow_ratio_macro': None, 'x_label': '', 'baseline': None})
+        # Add 1 empty row when the language changes
+        elif previous_language is not None and row['language'] != previous_language:
+            rows.append({**row, 'w_follow_ratio_macro': None, 'x_label': f'\n\n {previous_model}', 'baseline': None})
+        
+        #rows.append(row.to_dict())
+        
+        # Modify x_label conditionally: display the language if baseline_order == 0
+        x_label = '\n'+row['language'] if row['baseline_order'] == '0' else ''
+        rows.append({**row, 'x_label': x_label})
 
-    # ratio count positive valence/(sum count valences)
-    val2idx = list(val2idx.items())
-    num = val2idx[-1][-1] # name of julia in general
-    den = val2idx[0][-1] # name of ben in general
+        previous_model = row['model']
+        previous_language = row['language']
 
+    # Convert rows back to DataFrame and reset x positions
+    df_spaced = pd.DataFrame(rows)
+    df_spaced['x_pos'] = range(len(df_spaced))
 
-    word_dict={}
-    word_dict['description']=description
-    word_dict['formula']=f'{num}/({num}+{den})'
-    word_dict.update({k:v for k,v in zip(grouping_by,c)})
+    # Plot with Seaborn
+    sns.set_theme(style="whitegrid")
+    plt.figure(figsize=(14, 8))
 
-    # find correspondence between english and the other language
-    lang2lang = {}
-    ref_lange = full_cfg['tasks'][c[0]]['languages'].index('english')
-    for w,dataw in full_cfg['tasks'][c[0]]['words'].items():
-        this_lang_index=full_cfg['tasks'][c[0]]['languages'].index(language)
-        lang2lang[dataw[this_lang_index+1]]=dataw[ref_lange+1]
-    for w,c_dict in counts.items():
-        word_dict[lang2lang[w]]=c_dict.get(num,0)/(c_dict.get(num,0)+c_dict.get(den,0))
-    
-    counts_dict[index]=word_dict
+    # Barplot with artificial spaces
+    sns.barplot(
+        data=df_spaced,
+        x="x_pos", 
+        y="w_follow_ratio_macro",
+        hue="description",
+        palette="tab10",
+        dodge=False
+    )
 
+    # Replace x-axis labels (exclude artificial empty labels)
+    plt.xticks(
+        ticks=df_spaced['x_pos'], 
+        labels=df_spaced['x_label'].fillna(''), 
+        rotation=45, ha="right"
+    )
 
+    # Customize layout
+    plt.suptitle(f"Bias for {description}")
+    plt.title("Bias in [-1,1]. Positive reinforces a stereotype, negative the opposite. Unbiased is 0.")
+    plt.xlabel("Language | Model")
+    plt.ylabel("Bias")
 
+    plt.tight_layout()
 
-df_words=pd.DataFrame.from_dict(counts_dict,orient='index')
-df_words.sort_values(by=['model','language','task'],inplace=True)
-df_words.to_csv('data/df_words.csv',index=False)
+    # Save or show plot
+    os.makedirs('output', exist_ok=True)
+    plt.savefig(f"output/hierarchical_barplot_{bias}_{domain}.png")
+    plt.close('all')
 
