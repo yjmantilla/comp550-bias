@@ -26,7 +26,7 @@ def read_yaml(f):
         except yaml.YAMLError as exc:
             print(exc)
 
-cfg=read_yaml('cfg.yml')
+FULL_CFG=read_yaml('cfg.yml')
 
 
 data_path = 'data/'
@@ -36,14 +36,110 @@ results = [load_json(f) for f in results]
 results = [pd.DataFrame.from_dict(r,orient='index') for r in results]
 df = pd.concat(results)
 
+cfgs = glob.glob(data_path+'*_cfg.json')
+cfgs = [load_json(f) for f in cfgs]
+df_cfg = pd.DataFrame(cfgs)
+
+# drop phi for now
+df = df[~df['model'].str.contains('phi')]
+
 def sanitize_model_name(x):
     return x.lower().replace('lmstudio-community/','').replace('instruct-gguf','').replace('instruct-','').replace('lmstudio-','')
 
 df['model'] = df['model'].apply(sanitize_model_name)
 
+# add configuration to dataframe
+df_cfg['model'] = df_cfg['model'].apply(sanitize_model_name)
+
+dict_cfgs=[]
+for _,row in df.iterrows():
+    # look for its cfg
+    matching_criteria = ['task','language','model','bias','domain','baseline']
+
+    df_temp = df_cfg.copy()
+    for c in matching_criteria:
+        df_temp = df_temp[df_temp[c]==row[c]]
+    assert df_temp.shape[0]==1
+    df_temp = df_temp.iloc[0].to_dict()
+    dict_cfgs.append(df_temp)
+df['dict_cfg']=dict_cfgs
 
 
+row = df.iloc[0]
+row['dict_cfg']['identities']
+row['identities']
 
+def get_assignment(row, general_cfg):
+    identity_map = {' '.join([v['label']]+v['variants'][row['language']]):v['group'] for k,v in row['dict_cfg']['identities'].items()}
+    word_map={v[row['language']]:v['group'] for k,v in row['dict_cfg']['words'].items()}
+    all_identities = [v['group'] for k,v in row['dict_cfg']['identities'].items()]
+    assert len(identity_map) == len(all_identities)
+    assignment = get_closest_identity(row['answer'],row['words'],row['identities'])
+
+    # Make multilingual word map
+    general_cfg['tasks'][row['task']]['words']
+    multi_word_map = {}
+
+    for k,v in general_cfg['tasks'][row['task']]['words'].items():
+
+        full_word =[]
+        for _,v2 in v.items():
+            full_word.append(v2)
+        full_word = ' '.join(full_word)
+        # assume group is at the start before the words in each languages, this will help to compute the scores
+        multi_word_map[v[row['language']]]=full_word
+
+    if row['baseline']=='0nope':
+        group_map ={}
+        for k,v in row['dict_cfg']['identities'].items():
+            for id in row['identities']:
+                if id in v['variants'][row['language']]:
+                    group_def = v['group']
+                    group_map[id]=group_def
+    else:
+        names=[]
+        for k,v in row['dict_cfg']['identities'].items():
+            names.append(v['variants'][row['language']])
+        # if baseline, names should be the same
+        name_def = names[0]
+        for n in names:
+            assert n==name_def
+        # if 2 ids, there are two ways to make the baseline (either one or the other poses as the "other" identity, right we are doing this from the the order of the identities)
+        group_map={k:v for k,v in zip(row['identities'],all_identities)}
+        
+
+    assignment_grouped={w:group_map[id] for w,id in assignment.items()}
+    multi_lingual_assignment_grouped = {multi_word_map[w]:group_map[id] for w,id in assignment.items()}
+    return multi_lingual_assignment_grouped
+
+df['assignment']=df.apply(get_assignment,axis=1,args=(FULL_CFG,))
+
+# note in sexual orientation i forgot to assign the words with s and g, will have to correct that hardcoding
+
+def correct_assignment(row):
+    correct_map = {'f':'s','m':'g'}
+    new_assignment = {}
+    for w,a in row['assignment'].items():
+        if a in ['s','g']:
+            new_w = w.split(' ')
+            new_w[0] = correct_map[new_w[0]]
+            new_assignment[' '.join(new_w)]=a
+        else:
+            new_assignment[w]=a
+    return new_assignment
+
+df['assignment']=df.apply(correct_assignment,axis=1)
+
+def score(row):
+    points = []
+    for w,a in row['assignment'].items():
+        if w[0]==a:
+            points.append(1)
+        else:
+            points.append(-1)
+    
+
+df.iloc[243]
 def get_word_counts(df):
     word_counts = []
     wset = []
