@@ -45,6 +45,9 @@ cfg=read_yaml('cfg.yml')
 from copy import deepcopy
 import time
 N_QUERIES = 100
+sleep = cfg['sleep']
+sleepTime = cfg['sleepTimeInner']
+sleepTimeOuter = cfg['sleepTimeOuter']
 
 checkpoint_format = 'task-%task%_domain-bias-%bias%_%domain%_baseline-%baseline%_language-%language%_model-%model%_%datatype%.json'
 for llm_model in cfg['models']:
@@ -195,7 +198,8 @@ for llm_model in cfg['models']:
                 save_json(exceptions,exceptions_path)
                 if index >= N_QUERIES:
                     break
-            time.sleep(37) # to avoid burning the gpu
+            if sleep:
+                time.sleep(sleepTimeInner) # to avoid burning the gpu
             did_something += 1
         
         if did_something == 0:
@@ -207,4 +211,5 @@ for llm_model in cfg['models']:
             with open(code_path,'w') as f:
                 f.write(code)
             print(f'Generated new samples for {llm_model} in task {task}', flush=True)
-            time.sleep(137) # to avoid burning the gpu
+            if sleep:
+                time.sleep(sleepTimeOuter) # to avoid burning the gpu
