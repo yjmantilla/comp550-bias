@@ -46,7 +46,7 @@ from copy import deepcopy
 import time
 N_QUERIES = 100
 sleep = cfg['sleep']
-sleepTime = cfg['sleepTimeInner']
+sleepTimeInner = cfg['sleepTimeInner']
 sleepTimeOuter = cfg['sleepTimeOuter']
 
 checkpoint_format = 'task-%task%_domain-bias-%bias%_%domain%_baseline-%baseline%_language-%language%_model-%model%_%datatype%.json'
