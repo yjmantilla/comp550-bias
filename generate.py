@@ -78,12 +78,6 @@ for llm_model in cfg['models']:
             subcfg={'model':llm_model,'task':task,'bias':bias,'domain':domain,'baseline':baseline, 'language':language,'prompt':this_lang_prompt,'identities':this_lang_identities,'words':this_lang_words,}
             save_json(subcfg,subcfg_path)
 
-            # save code used to generate the samples
-            with open('generate.py','r') as f:
-                code = f.read()
-            with open(code_path,'w') as f:
-                f.write(code)
-
             if os.path.isfile(samples_path):
                 # get the final number of samples
                 samples = load_json(samples_path)
@@ -207,5 +201,10 @@ for llm_model in cfg['models']:
         if did_something == 0:
             print(f'No new samples generated for {llm_model} in task {task}', flush=True)
         else:
+            # save code used to generate the samples
+            with open('generate.py','r') as f:
+                code = f.read()
+            with open(code_path,'w') as f:
+                f.write(code)
             print(f'Generated new samples for {llm_model} in task {task}', flush=True)
             time.sleep(137) # to avoid burning the gpu
