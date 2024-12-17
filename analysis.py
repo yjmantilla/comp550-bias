@@ -41,7 +41,7 @@ cfgs = [load_json(f) for f in cfgs]
 df_cfg = pd.DataFrame(cfgs)
 
 # drop phi for now
-df = df[~df['model'].str.contains('phi')]
+#df = df[~df['model'].str.contains('phi')]
 
 def sanitize_model_name(x):
     return x.lower().replace('lmstudio-community/','').replace('instruct-gguf','').replace('instruct-','').replace('lmstudio-','')
