@@ -113,6 +113,7 @@ for llm_model in cfg['models']:
                     last_sample_exceptions = 0
             else:
                 exceptions = {}
+                last_sample_exceptions = 0
             
             if last_sample >= N_QUERIES:
                 print(f'Already generated {N_QUERIES} samples for {llm_model} in {language} for task {task}', flush=True)
