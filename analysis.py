@@ -174,7 +174,7 @@ for i, df_task in df_per_tasklangmodel:
     w_sum_points_normalized = {w: sum(v)/sum([abs(x) for x in v]) for w,v in w_points.items()}
     w_follow = {w: c.get(w[0],0) for w,c in w_counts.items()}
     w_unfollow = {w: sum([-1*v*(k!=w[0])+0*v*(k==w[0]) for k,v in c.items()]) for w,c in w_counts.items()}
-    w_follow_ratio = {w: c.get(w[0],0)/sum(c.values()) for w,c in w_counts.items()}
+    w_follow_ratio = {w: -0.5 + c.get(w[0],0)/sum(c.values()) for w,c in w_counts.items()} # offset for it to be around 0 for unbiased
 
     for order_dim in order_dims:
         this_data[order_dim] = example_row[order_dim]
@@ -196,7 +196,7 @@ for i, df_task in df_per_tasklangmodel:
     this_data['w_follow_ratio'] = w_follow_ratio
     this_data['w_follow_macro'] = sum(w_follow.values())
     this_data['w_unfollow_macro'] = sum(w_unfollow.values())
-    this_data['w_follow_ratio_macro'] = sum(w_follow.values())/sum([sum(c.values()) for c in w_counts.values()]) -0.5 # offset for it to be around 0 for unbiased
+    this_data['w_follow_ratio_macro'] = (sum(w_follow.values())/sum([sum(c.values()) for c in w_counts.values()]) -0.5) # offset for it to be around 0 for unbiased
     scores_per_tasklangmodel.append(this_data)
 
 df_scores = pd.DataFrame(scores_per_tasklangmodel)
@@ -213,6 +213,7 @@ for i, df_task in df_scores_per_biasdomain:
     bias=df_task.iloc[0]['bias']
     domain=df_task.iloc[0]['domain']
     description=df_task.iloc[0]['description']
+    group2label_map = {v['group']:v['label'] for k,v in FULL_CFG['tasks'][df_task.iloc[0]['task']]['identities'].items()}
     print(df_task.shape)
     print(df_task.iloc[0])
 
@@ -273,7 +274,7 @@ for i, df_task in df_scores_per_biasdomain:
         y="w_follow_ratio_macro",
         hue="description",
         palette="tab10",
-        dodge=False
+        dodge=False,
     )
 
     # Replace x-axis labels (exclude artificial empty labels)
@@ -282,10 +283,13 @@ for i, df_task in df_scores_per_biasdomain:
         labels=df_spaced['x_label'].fillna(''), 
         rotation=45, ha="right"
     )
+    
+    # set max and min values
+    plt.ylim(-0.5,0.5)
 
     # Customize layout
     plt.suptitle(f"Bias for {description}")
-    plt.title("Bias in [-1,1]. Positive reinforces a stereotype, negative the opposite. Unbiased is 0.")
+    plt.title("Bias in [-0.5,0.5]. Positive reinforces a stereotype, negative the opposite. Unbiased is 0.")
     plt.xlabel("Language | Model")
     plt.ylabel("Bias")
 
@@ -294,5 +298,184 @@ for i, df_task in df_scores_per_biasdomain:
     # Save or show plot
     os.makedirs('output', exist_ok=True)
     plt.savefig(f"output/hierarchical_barplot_{bias}_{domain}.png")
+    plt.close('all')
+
+    ## Score per word heatmap
+
+    # Flatten word data from w_follow_ratio into long-form DataFrame
+    word_rows = []
+    for _, row in df_task.iterrows():
+        for word, ratio in row['w_follow_ratio'].items():
+            word_rows.append({
+                'word': word,
+                'model': row['model'],
+                'language': row['language'],
+                'baseline_order': baseline_mapping[row['baseline']],
+                'baseline': row['baseline'],
+                'description': row['description'],
+                'w_follow_ratio': ratio
+            })
+    df_words = pd.DataFrame(word_rows)
+
+
+    # Sort data for hierarchy
+    df_words = df_words.sort_values(['model', 'word','language', 'baseline_order']).reset_index(drop=True)
+
+    # Add artificial columns for spacing
+    columns = []
+    previous_model = None
+    previous_language = None
+
+    non_unique_spaces = 0
+    for i, row in df_words.iterrows():
+        col_label = f"{row['model']}\n{row['language']}\n{baseline_mapping[row['baseline']]}\n{row['description']}"
+        columns.append({'word': row['word'], 'col_label': col_label, 'w_follow_ratio': row['w_follow_ratio']}) # offset for it to be around 0 for unbiased
+        previous_model = row['model']
+        previous_language = row['language']
+
+    # Convert to DataFrame and pivot to wide format
+    df_heatmap = pd.DataFrame(columns)
+    heatmap_data = df_heatmap.pivot(index="word", columns="col_label", values="w_follow_ratio")
+
+
+    # Create a new index with empty rows
+    new_index = []
+    previous_language = None
+    previous_model = None
+    top_ticks = []
+    ticks =[]
+    for col in heatmap_data.columns:
+        print(col)
+        language  = col.split('\n')[1]
+        model = col.split('\n')[0]
+        # Add 2 empty rows when the model changes
+        if previous_model is not None and col.split('\n')[0] != previous_model:
+            new_index.append(f' ')
+            new_index.append(f' ')
+            heatmap_data[' ']=np.zeros_like(heatmap_data.iloc[:,0])
+            top_ticks.append(' ')
+            top_ticks.append(' ')
+            ticks.append(' ')
+            ticks.append(' ')
+        # Add 1 empty row when the language changes
+        elif previous_language is not None and col.split('\n')[1] != previous_language:
+            new_index.append(' ')
+            top_ticks.append(model)
+            heatmap_data[' ']=np.zeros_like(heatmap_data.iloc[:,0])
+            ticks.append(' ')
+        border = col.split('\n')[2]
+        desc = col.split('\n')[3]
+        if border=='0':
+            key=desc#+f'\n{language}'
+            new_index.append(col)
+            #heatmap_data[key]=heatmap_data[col]
+            top_ticks.append(language)
+            ticks.append(key)
+        else:
+            key=desc
+            new_index.append(col)
+            #heatmap_data[key]=heatmap_data[col]
+            top_ticks.append(' ')
+            ticks.append(key)
+
+        # Update previous values
+        previous_language = col.split('\n')[1]
+        previous_model = col.split('\n')[0]
+
+
+    heatmap_data_with_spacing = heatmap_data[new_index]
+
+    heatmap_data_with_spacing.index = heatmap_data_with_spacing.index = [
+        '('+group2label_map[x[0]] +')'+ x[1:] for x in heatmap_data_with_spacing.index
+    ]
+
+
+
+    max_abs_value = max(abs(heatmap_data_with_spacing.min().min()), abs(heatmap_data_with_spacing.max().max()))
+
+    # Plot the heatmap
+    sns.set_theme(style="whitegrid")
+    plt.figure(figsize=(16, 10))
+    ax = sns.heatmap(
+        heatmap_data_with_spacing, 
+        cmap="seismic", 
+        annot=False, 
+        linewidths=0.5, 
+        linecolor='gray', 
+        vmin=-0.5,#-max_abs_value,  # Minimum value for color scale
+        vmax=0.5,#max_abs_value,   # Maximum value for color scale
+        cbar_kws={'label': 'bias'},
+    )
+
+
+    # Add secondary x-axis on top with different tick labels
+    ax_top = ax.secondary_xaxis('top')  # Create a top axis
+    top_labels = top_ticks
+    ax_top.set_xticks(ax.get_xticks())  # Align top ticks with the bottom
+    ax_top.set_xticklabels(top_labels, rotation=45, ha="left", fontsize=10)
+
+    # set xticks labels
+    ax.set_xticklabels(ticks, rotation=45, ha="right")
+
+    # Move title upward and adjust layout
+    #plt.title("Word-Level Heatmap of Bias (w_follow_ratio)", pad=30)
+    plt.suptitle(f"Word-Level Heatmap of Bias for {description}")
+    plt.title("Bias in [-0.5,0.5]. Positive reinforces a stereotype, negative the opposite. Unbiased is 0.\n In parentheses the stereotype assigned to the word.")
+    plt.xlabel("")#Baseline | Language | Model", labelpad=20)
+    plt.ylabel("Words")
+
+    # Save or show plot
+    plt.tight_layout()
+    #plt.show()
+    plt.savefig(f"output/word_bias_heatmap_with_spacing_{bias}_{domain}.png")
+
+    plt.close('all')
+
+    ##  Transposed version
+
+    heatmap_data_transposed = heatmap_data_with_spacing.T
+
+
+    # Determine the range of data for the heatmap
+    max_abs_value = max(abs(heatmap_data_transposed.min().min()), abs(heatmap_data_transposed.max().max()))
+
+    # Plot the heatmap
+    sns.set_theme(style="whitegrid")
+    plt.figure(figsize=(10, 16))
+    ax = sns.heatmap(
+        heatmap_data_transposed, 
+        cmap="seismic", 
+        annot=False, 
+        linewidths=0.5, 
+        linecolor='gray', 
+        vmin=-0.5,#-max_abs_value,  # Minimum value for color scale
+        vmax=0.5,#max_abs_value,   # Maximum value for color scale
+        cbar_kws=dict(use_gridspec=True,location="bottom",label='bias',orientation="horizontal"),
+    )
+
+    # Bottom ticks (default behavior)
+    ax.set_xticklabels(heatmap_data_transposed.columns, rotation=45, ha="right")
+
+    # Add secondary x-axis on top with different tick labels
+    ax_top = ax.secondary_yaxis('right')  # Create a top axis
+    top_labels = top_ticks
+    ax_top.set_yticks(ax.get_yticks())  # Align top ticks with the bottom
+    ax_top.set_yticklabels(top_labels, rotation=45, fontsize=10)
+    ax.set_yticklabels(ticks, rotation=0, ha="right")
+
+    # Move title upward and adjust layout
+    #plt.title("Word-Level Heatmap of Bias (w_follow_ratio)", pad=30)
+    plt.suptitle(f"Word-Level Heatmap of Bias for {description}")
+    plt.title("Bias in [-0.5,0.5]. Positive reinforces a stereotype, negative the opposite. Unbiased is 0.\n In parentheses the stereotype assigned to the word.")
+    plt.ylabel("")#Baseline | Language | Model", labelpad=20)
+    plt.xlabel("Words")
+
+    # Save or show plot
+    plt.tight_layout()
+    #plt.show()
+
+    # not needed for now
+    #plt.savefig(f"output/word_bias_heatmap_with_spacing_{bias}_{domain}_transposed.png")
+
     plt.close('all')
 
