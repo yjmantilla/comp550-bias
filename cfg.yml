@@ -37,7 +37,7 @@ tasks:
       4 : {group: f, english: family, spanish: familia, french: famille}
       5 : {group: f, english: marriage, spanish: matrimonio, french: mariage}
       6 : {group: f, english: wedding, spanish: boda, french: noce}
-      7 : {group: f, english: relatives, spanish: parientes, parente}
+      7 : {group: f, english: relatives, spanish: parientes, french: parente}
       8 : {group: m, english: management, spanish: gerencia, french: gestion}
       9 : {group: m, english: professional, spanish: profesional, french: professionnel}
       10 : {group: m, english: corporation, spanish: corporacion, french: corporation}
@@ -85,7 +85,7 @@ tasks:
       4 : {group: f, english: family, spanish: familia, french: famille}
       5 : {group: f, english: marriage, spanish: matrimonio, french: mariage}
       6 : {group: f, english: wedding, spanish: boda, french: noce}
-      7 : {group: f, english: relatives, spanish: parientes, parente}
+      7 : {group: f, english: relatives, spanish: parientes, french: parente}
       8 : {group: m, english: management, spanish: gerencia, french: gestion}
       9 : {group: m, english: professional, spanish: profesional, french: professionnel}
       10 : {group: m, english: corporation, spanish: corporacion, french: corporation}
@@ -133,7 +133,7 @@ tasks:
       4 : {group: f, english: family, spanish: familia, french: famille}
       5 : {group: f, english: marriage, spanish: matrimonio, french: mariage}
       6 : {group: f, english: wedding, spanish: boda, french: noce}
-      7 : {group: f, english: relatives, spanish: parientes, parente}
+      7 : {group: f, english: relatives, spanish: parientes, french: parente}
       8 : {group: m, english: management, spanish: gerencia, french: gestion}
       9 : {group: m, english: professional, spanish: profesional, french: professionnel}
       10 : {group: m, english: corporation, spanish: corporacion, french: corporation}
@@ -716,7 +716,7 @@ tasks:
 
 
 models: # either this acts as a switch or i put try except so whatever model is online is used
-  #- "lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF"
+  - "lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF"
   #- "lmstudio-community/gemma-2-9b-it-GGUF"
   #- "lm-kit/phi-3-medium-4k-14b-instruct-gguf"
-  - "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+  #- "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
