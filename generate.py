@@ -44,7 +44,7 @@ os.makedirs(data_path,exist_ok=True)
 cfg=read_yaml('cfg.yml')
 from copy import deepcopy
 import time
-N_QUERIES = 10
+N_QUERIES = 100
 sleep = cfg['sleep']
 sleepTimeInner = cfg['sleepTimeInner']
 sleepTimeOuter = cfg['sleepTimeOuter']
