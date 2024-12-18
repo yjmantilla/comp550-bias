@@ -5,13 +5,8 @@ import time
 from pprint import pprint
 import numpy as np
 import pandas as pd
-import string
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
 from openai import OpenAI # this is for the synthetic data
 import yaml
-import shutil
 import unicodedata
 from utils import get_closest_identity
 
@@ -50,6 +45,9 @@ cfg=read_yaml('cfg.yml')
 from copy import deepcopy
 import time
 N_QUERIES = 100
+sleep = cfg['sleep']
+sleepTimeInner = cfg['sleepTimeInner']
+sleepTimeOuter = cfg['sleepTimeOuter']
 
 checkpoint_format = 'task-%task%_domain-bias-%bias%_%domain%_baseline-%baseline%_language-%language%_model-%model%_%datatype%.json'
 for llm_model in cfg['models']:
@@ -83,12 +81,6 @@ for llm_model in cfg['models']:
             subcfg={'model':llm_model,'task':task,'bias':bias,'domain':domain,'baseline':baseline, 'language':language,'prompt':this_lang_prompt,'identities':this_lang_identities,'words':this_lang_words,}
             save_json(subcfg,subcfg_path)
 
-            # save code used to generate the samples
-            with open('generate.py','r') as f:
-                code = f.read()
-            with open(code_path,'w') as f:
-                f.write(code)
-
             if os.path.isfile(samples_path):
                 # get the final number of samples
                 samples = load_json(samples_path)
@@ -108,8 +100,17 @@ for llm_model in cfg['models']:
 
             if os.path.isfile(exceptions_path):
                 exceptions = load_json(exceptions_path)
+                samples_exceptions = {int(k):v for k,v in exceptions.items()}
+                ordered_keys_exceptions = sorted(samples_exceptions.keys())
+                save_json({k:samples_exceptions[k] for k in ordered_keys_exceptions},exceptions_path)
+
+                try:
+                    last_sample_exceptions = ordered_keys[-1]
+                except:
+                    last_sample_exceptions = 0
             else:
                 exceptions = {}
+                last_sample_exceptions = 0
             
             if last_sample >= N_QUERIES:
                 print(f'Already generated {N_QUERIES} samples for {llm_model} in {language} for task {task}', flush=True)
@@ -118,6 +119,7 @@ for llm_model in cfg['models']:
             index = last_sample
             client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
             count = 1
+            exception_count = last_sample_exceptions
             while True:
                 content = 'No content yet'
                 start = time.time()
@@ -185,20 +187,29 @@ for llm_model in cfg['models']:
                     sample = {'prompt': this_prompt,'answer': content,'model':llm_model,'language':language,'task':task,'bias':bias,'domain':domain,'baseline':baseline,'words':this_lang_words_shuffled,'identities':this_lang_identities_shuffled,}
                     samples[index] = sample
                 except Exception as e:
+                    exception_count += 1
                     error_str = traceback.format_exc()
                     print(error_str, flush=True)
-                    exceptions[index] = {'model':llm_model,'task':task,'bias':bias,'domain':domain,'baseline':baseline,'language':language,'prompt':this_prompt,'words':this_lang_words_shuffled,'identities':this_lang_identities_shuffled,'answer':content,'exception':traceback.format_exc()}
+                    exceptions[exception_count] = {'model':llm_model,'task':task,'bias':bias,'domain':domain,'baseline':baseline,'language':language,'prompt':this_prompt,'words':this_lang_words_shuffled,'identities':this_lang_identities_shuffled,'answer':content,'exception':traceback.format_exc()}
+
                 end = time.time()
                 print(index,count,f'Elapsed time: {end - start}', flush=True)
                 save_json(samples,samples_path)
                 save_json(exceptions,exceptions_path)
                 if index >= N_QUERIES:
                     break
-            time.sleep(37) # to avoid burning the gpu
+            if sleep:
+                time.sleep(sleepTimeInner) # to avoid burning the gpu
             did_something += 1
         
         if did_something == 0:
             print(f'No new samples generated for {llm_model} in task {task}', flush=True)
         else:
+            # save code used to generate the samples
+            with open('generate.py','r') as f:
+                code = f.read()
+            with open(code_path,'w') as f:
+                f.write(code)
             print(f'Generated new samples for {llm_model} in task {task}', flush=True)
-            time.sleep(137) # to avoid burning the gpu
+            if sleep:
+                time.sleep(sleepTimeOuter) # to avoid burning the gpu
