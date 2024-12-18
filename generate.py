@@ -59,6 +59,7 @@ for llm_model in cfg['models']:
             print(f'Skipping task {task}', flush=True)
             continue
         for language in taskcfg['languages']:
+            print(f'Generating samples for {llm_model} in {language} for task {task}', flush=True)
             baseline = taskcfg['baseline']
             domain = taskcfg['domain']
             bias = taskcfg['bias']
@@ -197,7 +198,7 @@ for llm_model in cfg['models']:
                     exceptions[exception_count] = {'model':llm_model,'task':task,'bias':bias,'domain':domain,'baseline':baseline,'language':language,'prompt':this_prompt,'words':this_lang_words_shuffled,'identities':this_lang_identities_shuffled,'answer':content,'exception':traceback.format_exc()}
 
                 end = time.time()
-                print(index,count,f'Elapsed time: {end - start}', flush=True)
+                print(index,count,exception_count,f'Elapsed time: {end - start}', flush=True)
                 save_json(samples,samples_path)
                 save_json(exceptions,exceptions_path)
                 if index >= N_QUERIES:
