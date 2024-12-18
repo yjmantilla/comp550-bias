@@ -39,15 +39,14 @@ def read_yaml(f):
 sanitize_model = lambda x: x.replace('/','!').replace('-','~').replace('_','&')
 retrieve_model = lambda x: x.replace('!','/').replace('~','-').replace('&','_')
 
-if "gpt-4o-mini" in cfg['models']:
-    api_key = input('Enter your OpenAI API key: ')
+api_key = input('Enter your OpenAI API key: ')
 
 data_path='data/'
 os.makedirs(data_path,exist_ok=True)
 cfg=read_yaml('cfg.yml')
 from copy import deepcopy
 import time
-N_QUERIES = 20
+N_QUERIES = 100
 sleep = cfg['sleep']
 sleepTimeInner = cfg['sleepTimeInner']
 sleepTimeOuter = cfg['sleepTimeOuter']
@@ -60,7 +59,6 @@ for llm_model in cfg['models']:
             print(f'Skipping task {task}', flush=True)
             continue
         for language in taskcfg['languages']:
-            print(f'Generating samples for {llm_model} in {language} for task {task}', flush=True)
             baseline = taskcfg['baseline']
             domain = taskcfg['domain']
             bias = taskcfg['bias']
@@ -122,10 +120,8 @@ for llm_model in cfg['models']:
             # generate samples
             index = last_sample
             # creating with openai client this time
-            if llm_model == 'gpt-4o-mini':
-                client = OpenAI(api_key=api_key, max_retries=5)
-            else:
-                client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
+            # client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
+            client = OpenAI(api_key=api_key, max_retries=5)
             count = 1
             exception_count = last_sample_exceptions
             while True:
@@ -201,7 +197,7 @@ for llm_model in cfg['models']:
                     exceptions[exception_count] = {'model':llm_model,'task':task,'bias':bias,'domain':domain,'baseline':baseline,'language':language,'prompt':this_prompt,'words':this_lang_words_shuffled,'identities':this_lang_identities_shuffled,'answer':content,'exception':traceback.format_exc()}
 
                 end = time.time()
-                print(index,count,exception_count,f'Elapsed time: {end - start}', flush=True)
+                print(index,count,f'Elapsed time: {end - start}', flush=True)
                 save_json(samples,samples_path)
                 save_json(exceptions,exceptions_path)
                 if index >= N_QUERIES:
