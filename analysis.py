@@ -41,7 +41,10 @@ cfgs = [load_json(f) for f in cfgs]
 df_cfg = pd.DataFrame(cfgs)
 
 # drop phi for now
-#df = df[~df['model'].str.contains('phi')]
+df = df[~df['model'].str.contains('phi')]
+df = df[~df['model'].str.contains('Qwen')]
+df = df[~df['model'].str.contains('Uncensored')]
+
 
 def sanitize_model_name(x):
     return x.lower().replace('lmstudio-community/','').replace('instruct-gguf','').replace('instruct-','').replace('lmstudio-','')
@@ -169,6 +172,10 @@ for i, df_task in df_per_tasklangmodel:
             w_counts[w]+=[row['assignment'][w]]
 
     w_counts = {w: {x: y for x, y in zip(*np.unique(w_counts[w], return_counts=True))} for w in w_counts.keys()}
+    # in french horrible and awful were mapped to horrible, so we have to remove one of them
+    # and to maintain the same number of words, we remove one with a positive valence
+    # remove horrible horrible horrible (and marvelous sublime merveille)
+    w_counts = {k:v for k,v in w_counts.items() if 'horrible horrible' not in k and  'marvelous sublime' not in k}
     w_points = {w: [-1*v*(k!=w[0])+1*v*(k==w[0]) for k,v in c.items()] for w,c in w_counts.items()}
     w_sum_points = {w: sum(v) for w,v in w_points.items()}
     w_sum_points_normalized = {w: sum(v)/sum([abs(x) for x in v]) for w,v in w_points.items()}
