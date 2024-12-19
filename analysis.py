@@ -556,7 +556,7 @@ for varying_dimension in ['model', 'language','domain']:
     plt.xlabel(varying_dimension.capitalize())
     plt.ylabel("Bias")
     plt.ylim(-0.5, 0.5)
-    plt.legend(title="Baseline", loc="upper right")
+    plt.legend(title="", loc="upper right")
 
     # Save or show plot
     os.makedirs('output', exist_ok=True)
