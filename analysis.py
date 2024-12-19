@@ -42,20 +42,11 @@ df_cfg = pd.DataFrame(cfgs)
 
 # drop phi for now
 #df = df[~df['model'].str.contains('phi')]
-df = df[~df['model'].str.contains('Qwen')]
-df = df[~df['model'].str.contains('Uncensored')]
 
 
 def sanitize_model_name(x):
     #return x.lower().replace('lmstudio-community/','').replace('instruct-gguf','').replace('instruct-','').replace('lmstudio-','').replace('lmstudio-community/')
-    if 'gemma' in x.lower():
-        return 'gemma 2 9b'
-    if 'llama' in x.lower():
-        return 'llama 3.1 8b'
-    if 'phi' in x.lower():
-        return 'phi 3 14b'
-    else:
-        return x.lower().replace('lmstudio-community/','').replace('instruct-gguf','').replace('instruct-','').replace('lmstudio-','').replace('lm-kit/')
+    return x.lower().replace('lmstudio-community/','').replace('instruct-gguf','').replace('instruct-','').replace('lmstudio-','').replace('lm-kit/','')
 
 df['model'] = df['model'].apply(sanitize_model_name)
 
@@ -216,8 +207,20 @@ for i, df_task in df_per_tasklangmodel:
 
 df_scores = pd.DataFrame(scores_per_tasklangmodel)
 
+# drop power french as mistake in gendered words
+
+df_scores = df_scores[~((df_scores['domain']=='power') & (df_scores['language']=='french'))]
+
+# no french for phi model
+df_scores = df_scores[~(df_scores['model'].str.contains('phi') & (df_scores['language']=='french'))]
+
+# exlude sexuality for now
+
+df_scores = df_scores[~(df_scores['bias'].str.contains('sexuality'))]
+
 order_dims = ['bias','domain']
 df_scores_per_biasdomain = list(df_scores.groupby(order_dims))
+
 
 import pandas as pd
 import seaborn as sns
@@ -492,5 +495,71 @@ for i, df_task in df_scores_per_biasdomain:
     # not needed for now
     #plt.savefig(f"output/word_bias_heatmap_with_spacing_{bias}_{domain}_transposed.png")
 
+    plt.close('all')
+
+## box plots across each dimension
+
+
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import os
+
+df_task = df_scores.copy()
+
+def basefun(x):
+    if x == '0nope':
+        return 'Woman vs Man'
+    if x == 'm':
+        return 'Man vs Man'
+    if x == 'f':
+        return 'Woman vs Woman'
+df_task['description']=df_task['baseline'].apply(lambda x: basefun(x))
+group2label_map = {v['group']: v['label'] for k, v in FULL_CFG['tasks'][df_task.iloc[0]['task']]['identities'].items()}
+print(df_task.shape)
+print(df_task.iloc[0])
+
+# Sort data for hierarchical structure
+baseline_mapping = {}
+first = True
+for k in df_task['baseline'].copy().unique().tolist():
+    if k == '0nope':
+        baseline_mapping[k] = '0'
+    else:
+        if first:
+            baseline_mapping[k] = '-1'
+            first = False
+        else:
+            baseline_mapping[k] = '1'
+
+# Sort and order the data
+df_task['baseline_order'] = df_task['baseline'].apply(lambda x: baseline_mapping[x])
+df_task = df_task.sort_values(['model', 'language', 'baseline_order']).reset_index(drop=True)
+
+# Plot for each varying dimension
+for varying_dimension in ['model', 'language','domain']:
+    sns.set_theme(style="whitegrid")
+    plt.figure(figsize=(14, 8))
+
+    # Boxplot grouped by the varying dimension
+    sns.boxplot(
+        data=df_task,
+        x=varying_dimension,  # Varying dimension on the x-axis
+        y="w_follow_ratio_macro",  # Distribution values
+        hue="description",  # Use hue to distinguish baselines
+        palette="tab10"
+    )
+
+    # Customize layout
+    plt.suptitle(f"Distribution of Bias by {varying_dimension.capitalize()}")
+    plt.title("Bias in [-0.5,0.5]. Positive reinforces a stereotype, negative the opposite. Unbiased is 0.")
+    plt.xlabel(varying_dimension.capitalize())
+    plt.ylabel("Bias")
+    plt.ylim(-0.5, 0.5)
+    plt.legend(title="Baseline", loc="upper right")
+
+    # Save or show plot
+    os.makedirs('output', exist_ok=True)
+    plt.savefig(f"output/boxplot_bias_{varying_dimension}.png")
     plt.close('all')
 
