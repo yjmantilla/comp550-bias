@@ -39,8 +39,6 @@ def read_yaml(f):
 sanitize_model = lambda x: x.replace('/','!').replace('-','~').replace('_','&')
 retrieve_model = lambda x: x.replace('!','/').replace('~','-').replace('&','_')
 
-if "gpt-4o-mini" in cfg['models']:
-    api_key = input('Enter your OpenAI API key: ')
 
 data_path='data/'
 os.makedirs(data_path,exist_ok=True)
@@ -53,6 +51,11 @@ sleepTimeInner = cfg['sleepTimeInner']
 sleepTimeOuter = cfg['sleepTimeOuter']
 
 checkpoint_format = 'task-%task%_domain-bias-%bias%_%domain%_baseline-%baseline%_language-%language%_model-%model%_%datatype%.json'
+
+if "gpt-4o-mini" in cfg['models']:
+    api_key = input('Enter your OpenAI API key: ')
+
+
 for llm_model in cfg['models']:
     did_something = 0
     for task, taskcfg in cfg['tasks'].items():
